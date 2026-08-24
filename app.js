@@ -247,7 +247,7 @@ function applyDisguise(type) {
       if (addressBar) addressBar.value = 'about:blank';
       if (newTabPage) newTabPage.style.display = 'flex';
       if (window.history?.pushState) {
-        window.history.pushState(null, '', 'about:blank');
+        window.history.pushState(null, '', '/about:blank');
       }
       break;
 
@@ -258,7 +258,7 @@ function applyDisguise(type) {
       if (newTabPage) newTabPage.style.display = 'none';
       googleFrame?.classList.add('active');
       if (window.history?.pushState) {
-        window.history.pushState(null, 'Google', 'https://www.google.com');
+        window.history.pushState(null, 'Google', '/google');
       }
       break;
 
@@ -270,7 +270,7 @@ function applyDisguise(type) {
       if (newTabPage) newTabPage.style.display = 'none';
       classroomFrame?.classList.add('active');
       if (window.history?.pushState) {
-        window.history.pushState(null, 'Google Classroom', 'https://classroom.google.com');
+        window.history.pushState(null, 'Google Classroom', '/classroom');
       }
       break;
   }
