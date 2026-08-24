@@ -20,8 +20,7 @@ const state = {
 };
 
 const CORS_PROXIES = [
-  'https://api.allorigins.win/raw?url=',
-  'https://corsproxy.io/?',
+  'https://corsproxy.io/?url=',
 ];
 
 let currentProxyIndex = 0;
@@ -117,6 +116,10 @@ function setupEventListeners() {
   document.getElementById('backBtn')?.addEventListener('click', navigateBack);
   document.getElementById('forwardBtn')?.addEventListener('click', navigateForward);
   document.getElementById('refreshBtn')?.addEventListener('click', refreshPage);
+  document.querySelector('.add-tab-btn')?.addEventListener('click', addNewTab);
+  document.querySelectorAll('.tab').forEach(tab => {
+    tab.addEventListener('click', () => activateTab(tab.dataset.tabId));
+  });
 
   // Keyboard shortcuts
   setupKeyboardShortcuts();
@@ -277,9 +280,39 @@ function applyDisguise(type) {
 }
 
 function showSearchInterface() {
-  document.querySelector('.new-tab-page').style.display = 'flex';
+  const newTabPage = document.querySelector('.new-tab-page');
+  if (newTabPage) newTabPage.style.display = 'flex';
   document.getElementById('googleFrame')?.classList.remove('active');
   document.getElementById('classroomFrame')?.classList.remove('active');
+}
+
+function addNewTab() {
+  const tabsContainer = document.getElementById('tabsContainer');
+  if (!tabsContainer) return;
+
+  const tabId = `tab-${Date.now()}`;
+  const tab = document.createElement('div');
+  tab.className = 'tab';
+  tab.dataset.tabId = tabId;
+  tab.innerHTML = '<span style="font-size:20px;">🥔</span><span class="tab-title">New Tab</span>';
+  tab.addEventListener('click', () => activateTab(tabId));
+  tabsContainer.querySelectorAll('.tab').forEach(item => item.classList.remove('active'));
+  tab.classList.add('active');
+  tabsContainer.appendChild(tab);
+
+  const addressBar = document.getElementById('addressBar');
+  if (addressBar) addressBar.value = '';
+  const mainSearch = document.getElementById('mainSearch');
+  if (mainSearch) mainSearch.value = '';
+  showSearchInterface();
+  applyDisguise('blank');
+}
+
+function activateTab(tabId) {
+  document.querySelectorAll('.tab').forEach(tab => {
+    tab.classList.toggle('active', tab.dataset.tabId === tabId);
+  });
+  showSearchInterface();
 }
 
 // ============================================================================
@@ -344,19 +377,20 @@ async function corsSearch(query) {
       searchUrl = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`;
   }
 
-  const proxyUrl = CORS_PROXIES[currentProxyIndex] + encodeURIComponent(searchUrl);
-  
-  try {
-    const response = await fetch(proxyUrl);
-    if (!response.ok) throw new Error('CORS proxy failed');
-    
-    const html = await response.text();
-    return parseSearchResults(html, state.currentEngine);
-  } catch (error) {
-    // Try next CORS proxy
-    currentProxyIndex = (currentProxyIndex + 1) % CORS_PROXIES.length;
-    throw error;
+  let lastError = new Error('All CORS proxies failed');
+  for (let attempt = 0; attempt < CORS_PROXIES.length; attempt++) {
+    const proxyIndex = (currentProxyIndex + attempt) % CORS_PROXIES.length;
+    try {
+      const response = await fetch(CORS_PROXIES[proxyIndex] + encodeURIComponent(searchUrl));
+      if (!response.ok) throw new Error(`CORS proxy failed (${response.status})`);
+      currentProxyIndex = proxyIndex;
+      return parseSearchResults(await response.text(), state.currentEngine);
+    } catch (error) {
+      lastError = error;
+    }
   }
+  currentProxyIndex = (currentProxyIndex + 1) % CORS_PROXIES.length;
+  throw lastError;
 }
 
 function parseSearchResults(html, engine) {
@@ -520,7 +554,9 @@ async function openProxy(url) {
       <div class="loading-spinner"></div>
       <div style="margin-top:20px;">Loading site...</div>
     </div>
-    <iframe class="proxy-frame" src="${getProxyUrl(url)}" onload="this.previousElementSibling.remove()"></iframe>
+    <iframe class="proxy-frame" data-url="${escapeAttr(url)}" src="${getProxyUrl(url)}"
+      onload="removeProxyLoader(this)"
+      onerror="retryProxyFrame(this)"></iframe>
   `;
 
   addToHistory({ type: 'proxy', url });
@@ -529,6 +565,20 @@ async function openProxy(url) {
 function getProxyUrl(url) {
   // Pure CORS mode
   return CORS_PROXIES[currentProxyIndex] + encodeURIComponent(url);
+}
+
+function removeProxyLoader(frame) {
+  frame?.previousElementSibling?.remove();
+}
+
+function retryProxyFrame(frame) {
+  if (!frame || frame.dataset.retried === 'true') {
+    removeProxyLoader(frame);
+    return;
+  }
+  frame.dataset.retried = 'true';
+  currentProxyIndex = (currentProxyIndex + 1) % CORS_PROXIES.length;
+  frame.src = getProxyUrl(frame.dataset.url || frame.src);
 }
 
 // (If you want to keep the ChatGPT/complex-site warnings, you can reinsert those helpers here)
