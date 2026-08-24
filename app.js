@@ -1,6 +1,6 @@
 /**
- * OmniSearch - Frontend Application (CORS-only mode for Vercel)
- * Uses client-side CORS proxies instead of backend APIs.
+ * OmniSearch - Frontend Application
+ * Uses the app's same-origin Python API for production requests.
  */
 
 // ============================================================================
@@ -12,7 +12,7 @@ const state = {
   proxyHomepage: localStorage.getItem('proxyHomepage') || 'classroom',
   stealthMode: localStorage.getItem('stealthMode') === 'true',
   autoMirror: localStorage.getItem('autoMirror') !== 'false', // default true
-  backend: 'cors', // force CORS mode
+  backend: 'server',
   searchCount: parseInt(localStorage.getItem('searchCount')) || 0,
   burnedCount: 0,
   history: [],
@@ -31,7 +31,7 @@ let currentProxyIndex = 0;
 
 document.addEventListener('DOMContentLoaded', () => {
   initializeUI();
-  detectBackend();       // now just sets CORS mode text/UI
+  detectBackend();
   setupEventListeners();
   applyDisguise(state.proxyHomepage);
   updateStatistics();
@@ -54,7 +54,7 @@ function initializeUI() {
 }
 
 // ============================================================================
-// BACKEND DETECTION (CORS-ONLY DISPLAY)
+// BACKEND DISPLAY
 // ============================================================================
 
 async function detectBackend() {
@@ -62,11 +62,10 @@ async function detectBackend() {
   const modeBadge = document.getElementById('modeBadge');
   const activeBackendSpan = document.getElementById('activeBackend');
 
-  // Force CORS mode – no server backend on Vercel
-  state.backend = 'cors';
+  state.backend = 'server';
 
-  const text = 'CORS Proxy Mode • Client-Side 🌐';
-  const badge = '🌐 CORS';
+  const text = 'Server Search Mode • Same-Origin 🔒';
+  const badge = '🔒 Server';
 
   if (modeText) modeText.textContent = text;
   if (modeBadge) {
@@ -316,7 +315,7 @@ function activateTab(tabId) {
 }
 
 // ============================================================================
-// SEARCH FUNCTIONALITY (CORS ONLY)
+// SEARCH FUNCTIONALITY
 // ============================================================================
 
 async function performSearch() {
@@ -336,13 +335,13 @@ async function performSearch() {
     <div class="loading-overlay">
       <div class="loading-spinner"></div>
       <div style="margin-top:20px;">
-        🌐 CORS searching for 100 results...
+        🔒 Searching securely...
       </div>
     </div>
   `;
 
   try {
-    const results = await corsSearch(query);
+    const results = await serverSearch(query);
     if (!results || results.length === 0) {
       showNoResults(view);
       return;
@@ -357,40 +356,15 @@ async function performSearch() {
   }
 }
 
-async function corsSearch(query) {
-  let searchUrl = '';
-  
-  switch (state.currentEngine) {
-    case 'duckduckgo':
-      searchUrl = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`;
-      break;
-    case 'google':
-      searchUrl = `https://www.google.com/search?q=${encodeURIComponent(query)}&num=20`;
-      break;
-    case 'brave':
-      searchUrl = `https://search.brave.com/search?q=${encodeURIComponent(query)}`;
-      break;
-    case 'startpage':
-      searchUrl = `https://www.startpage.com/sp/search?query=${encodeURIComponent(query)}`;
-      break;
-    default:
-      searchUrl = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`;
-  }
+async function serverSearch(query) {
+  const response = await fetch(`/api/search?q=${encodeURIComponent(query)}&engine=${encodeURIComponent(state.currentEngine)}`);
+  if (!response.ok) throw new Error(`Search service returned ${response.status}`);
 
-  let lastError = new Error('All CORS proxies failed');
-  for (let attempt = 0; attempt < CORS_PROXIES.length; attempt++) {
-    const proxyIndex = (currentProxyIndex + attempt) % CORS_PROXIES.length;
-    try {
-      const response = await fetch(CORS_PROXIES[proxyIndex] + encodeURIComponent(searchUrl));
-      if (!response.ok) throw new Error(`CORS proxy failed (${response.status})`);
-      currentProxyIndex = proxyIndex;
-      return parseSearchResults(await response.text(), state.currentEngine);
-    } catch (error) {
-      lastError = error;
-    }
+  const payload = await response.json();
+  if (!payload.success && (!payload.results || payload.results.length === 0)) {
+    throw new Error(payload.error || 'Search service returned no results');
   }
-  currentProxyIndex = (currentProxyIndex + 1) % CORS_PROXIES.length;
-  throw lastError;
+  return payload.results || [];
 }
 
 function parseSearchResults(html, engine) {
@@ -545,7 +519,6 @@ function handleResultClick(url) {
 }
 
 async function openProxy(url) {
-  // Stealth backend is not available in CORS-only mode; just use normal proxy
   const view = document.getElementById('view-home');
   if (!view) return;
 
@@ -563,8 +536,8 @@ async function openProxy(url) {
 }
 
 function getProxyUrl(url) {
-  // Pure CORS mode
-  return CORS_PROXIES[currentProxyIndex] + encodeURIComponent(url);
+  const encodedUrl = btoa(unescape(encodeURIComponent(url)));
+  return `/api/proxy?url=${encodeURIComponent(encodedUrl)}`;
 }
 
 function removeProxyLoader(frame) {
@@ -577,7 +550,6 @@ function retryProxyFrame(frame) {
     return;
   }
   frame.dataset.retried = 'true';
-  currentProxyIndex = (currentProxyIndex + 1) % CORS_PROXIES.length;
   frame.src = getProxyUrl(frame.dataset.url || frame.src);
 }
 
