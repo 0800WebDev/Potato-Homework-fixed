@@ -433,12 +433,15 @@ def proxy():
         </body></html>''', 502
     
     content_type = response.headers.get('Content-Type', '')
-    
-    if 'text/html' not in content_type:
+    html = response.text
+    is_html = 'text/html' in content_type.lower() or bool(
+        re.search(r'<(?:!doctype|html|head|body)\b', html, re.IGNORECASE)
+    )
+
+    if not is_html:
         return Response(response.content, content_type=content_type)
     
     # Process HTML
-    html = response.text
     soup = BeautifulSoup(html, 'html.parser')
     
     parsed = urlparse(target_url)

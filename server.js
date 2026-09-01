@@ -100,8 +100,11 @@ app.get('/api/proxy', async (req, res) => {
       signal: AbortSignal.timeout(15000),
     });
     res.status(response.status);
-    res.type(response.headers.get('content-type') || 'text/html; charset=utf-8');
-    res.send(await response.text());
+    const body = await response.text();
+    const upstreamType = response.headers.get('content-type') || '';
+    const isHtml = /<(?:!doctype|html|head|body)\b/i.test(body);
+    res.set('Content-Type', isHtml ? 'text/html; charset=utf-8' : (upstreamType || 'text/plain; charset=utf-8'));
+    res.send(body);
   } catch {
     res.status(502).send('The requested site could not be loaded.');
   }
