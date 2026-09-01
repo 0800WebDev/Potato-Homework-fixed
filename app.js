@@ -527,12 +527,32 @@ async function openProxy(url) {
       <div class="loading-spinner"></div>
       <div style="margin-top:20px;">Loading site...</div>
     </div>
-    <iframe class="proxy-frame" data-url="${escapeAttr(url)}" src="${getProxyUrl(url)}"
-      onload="removeProxyLoader(this)"
-      onerror="retryProxyFrame(this)"></iframe>
   `;
 
   addToHistory({ type: 'proxy', url });
+
+  try {
+    const response = await fetch(getProxyUrl(url));
+    if (!response.ok) throw new Error(`Proxy returned ${response.status}`);
+
+    const body = await response.text();
+    const isHtml = /<(?:!doctype|html|head|body|title|main|section|div|style|script)\b/i.test(body);
+    const documentHtml = isHtml
+      ? body
+      : `<!doctype html><html><body style="font-family:system-ui;padding:24px;white-space:pre-wrap;">${escapeHtml(body)}</body></html>`;
+
+    const frame = document.createElement('iframe');
+    frame.className = 'proxy-frame';
+    frame.dataset.url = url;
+    frame.addEventListener('load', () => {
+      frame.previousElementSibling?.remove();
+    }, { once: true });
+    frame.srcdoc = documentHtml;
+    view.appendChild(frame);
+  } catch (error) {
+    console.error('Proxy error:', error);
+    showError(view, error.message || 'The requested site could not be loaded.');
+  }
 }
 
 function getProxyUrl(url) {
